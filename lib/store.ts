@@ -7,7 +7,7 @@ import { readXArticles, readXPost, readXProfile, xPostAddress, xProfileAddress }
 export type AppEnv = { DB: D1Database; AI?: { run: (model: string, input: unknown) => Promise<unknown> } };
 const now = () => new Date().toISOString();
 const day = () => new Date().toISOString().slice(0, 10);
-const SCHEMA_VERSION = "2026-07-16.2";
+const SCHEMA_VERSION = "2026-07-17.1";
 const schemaReady = new WeakMap<object, Promise<void>>();
 
 async function initializeSchema(db: D1Database) {
@@ -31,6 +31,8 @@ async function initializeSchema(db: D1Database) {
     db.prepare("CREATE TABLE IF NOT EXISTS notifications (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, actor_user_id INTEGER NOT NULL, type TEXT NOT NULL, annotation_id INTEGER, profile_message_id INTEGER, is_read INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, FOREIGN KEY(user_id) REFERENCES users(id), FOREIGN KEY(actor_user_id) REFERENCES users(id), FOREIGN KEY(annotation_id) REFERENCES annotations(id), FOREIGN KEY(profile_message_id) REFERENCES profile_messages(id))"),
     db.prepare("CREATE INDEX IF NOT EXISTS items_created_idx ON items(created_at DESC)"),
     db.prepare("CREATE INDEX IF NOT EXISTS items_source_idx ON items(source_id)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS items_published_idx ON items(published_at DESC, id DESC)"),
+    db.prepare("CREATE INDEX IF NOT EXISTS items_source_published_idx ON items(source_id, published_at DESC, id DESC)"),
     db.prepare("CREATE INDEX IF NOT EXISTS auth_sessions_user_idx ON auth_sessions(user_id)"),
     db.prepare("CREATE INDEX IF NOT EXISTS auth_attempts_key_idx ON auth_attempts(attempt_key, action, attempted_at DESC)"),
     db.prepare("CREATE INDEX IF NOT EXISTS reading_day_idx ON daily_reading_activity(day, user_id)"),
@@ -107,11 +109,14 @@ async function backfillSourceCategories(db: D1Database) {
   }
 }
 
-export async function dashboard(env: AppEnv, userId: number | null = null) {
+export async function dashboard(env: AppEnv, userId: number | null = null, view: "today" | "discover" = "discover") {
   await ensureSchema(env.DB);
+  const itemRowsRequest = view === "today" && userId
+    ? env.DB.prepare("SELECT i.id, i.source_id AS sourceId, i.kind, i.title, i.author, i.original_excerpt AS originalExcerpt, i.translated_title AS translatedTitle, i.translated_excerpt AS translatedExcerpt, i.url, i.published_at AS publishedAt, i.language, i.topic, i.status, COALESCE(uis.is_read, 0) AS isRead, COALESCE(uis.is_saved, 0) AS isSaved, s.name AS sourceName FROM items i JOIN user_source_follows usf ON usf.source_id = i.source_id AND usf.user_id = ? LEFT JOIN sources s ON s.id = i.source_id LEFT JOIN user_item_states uis ON uis.item_id = i.id AND uis.user_id = ? WHERE i.published_at >= strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-2 days') ORDER BY i.published_at DESC, i.id DESC LIMIT 200").bind(userId, userId).all()
+    : env.DB.prepare("SELECT i.id, i.source_id AS sourceId, i.kind, i.title, i.author, i.original_excerpt AS originalExcerpt, i.translated_title AS translatedTitle, i.translated_excerpt AS translatedExcerpt, i.url, i.published_at AS publishedAt, i.language, i.topic, i.status, COALESCE(uis.is_read, 0) AS isRead, COALESCE(uis.is_saved, 0) AS isSaved, s.name AS sourceName FROM items i LEFT JOIN sources s ON s.id = i.source_id LEFT JOIN user_item_states uis ON uis.item_id = i.id AND uis.user_id = ? ORDER BY CASE WHEN i.published_at IS NULL OR i.published_at = '' THEN 1 ELSE 0 END, i.published_at DESC, i.id DESC LIMIT 500").bind(userId || -1).all();
   const [sourceRows, itemRows, totalRow, ideaRow, importRows] = await Promise.all([
     env.DB.prepare("SELECT s.id, s.kind, s.category, s.name, s.url, s.enabled, s.last_synced_at AS lastSyncedAt, s.last_error AS lastError, s.avatar_url AS avatarUrl, s.contributor_user_id AS contributorUserId, COALESCE(u.nickname, '站点收录') AS contributorNickname, CASE WHEN s.contributor_user_id = ? THEN 1 ELSE 0 END AS canManage, CASE WHEN usf.user_id IS NULL THEN 0 ELSE 1 END AS isFollowed, (SELECT COUNT(*) FROM items i WHERE i.source_id = s.id) AS itemCount FROM sources s LEFT JOIN users u ON u.id = s.contributor_user_id LEFT JOIN user_source_follows usf ON usf.source_id = s.id AND usf.user_id = ? ORDER BY s.created_at DESC").bind(userId || -1, userId || -1).all(),
-    env.DB.prepare("SELECT i.id, i.source_id AS sourceId, i.kind, i.title, i.author, i.original_excerpt AS originalExcerpt, i.translated_title AS translatedTitle, i.translated_excerpt AS translatedExcerpt, i.url, i.published_at AS publishedAt, i.language, i.topic, i.status, COALESCE(uis.is_read, 0) AS isRead, COALESCE(uis.is_saved, 0) AS isSaved, s.name AS sourceName FROM items i LEFT JOIN sources s ON s.id = i.source_id LEFT JOIN user_item_states uis ON uis.item_id = i.id AND uis.user_id = ? ORDER BY CASE WHEN i.published_at IS NULL OR i.published_at = '' THEN 1 ELSE 0 END, i.published_at DESC, i.id DESC LIMIT 500").bind(userId || -1).all(),
+    itemRowsRequest,
     env.DB.prepare("SELECT COUNT(*) AS totalItems FROM items").first<{ totalItems: number }>(),
     env.DB.prepare("SELECT id, day, headline, angle, source_item_ids AS sourceItemIds FROM ideas WHERE day = ?").bind(day()).first(),
     userId ? env.DB.prepare("SELECT id, query, status, stage, result_name AS resultName, item_count AS itemCount, last_error AS lastError, created_at AS createdAt, updated_at AS updatedAt FROM subscription_requests WHERE requester_user_id = ? AND kind = 'wechat' AND (status = 'pending' OR julianday(COALESCE(updated_at, created_at)) >= julianday('now', '-10 minutes')) ORDER BY COALESCE(updated_at, created_at) DESC LIMIT 4").bind(userId).all() : Promise.resolve({ results: [] }),
