@@ -201,6 +201,25 @@ test("keeps lightweight routes off the reading-data path and progressively rende
   assert.match(styles, /mobile-sources-open/);
 });
 
+test("keeps dashboard reads off the D1 write queue and limits today to recent followed items", async () => {
+  const [page, store, auth, dashboardRoute] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../lib/store.ts", import.meta.url), "utf8"),
+    readFile(new URL("../lib/auth.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/dashboard/route.ts", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(auth, /SESSION_TOUCH_INTERVAL_MS = 5 \* 60 \* 1000/);
+  assert.match(auth, /Date\.now\(\) - lastSeenAt >= SESSION_TOUCH_INTERVAL_MS/);
+  assert.match(store, /items_published_idx/);
+  assert.match(store, /JOIN user_source_follows usf ON usf\.source_id = i\.source_id AND usf\.user_id = \?/);
+  assert.match(store, /strftime\('%Y-%m-%dT%H:%M:%fZ', 'now', '-2 days'\)/);
+  assert.match(dashboardRoute, /const itemsScope = view === "today" \? "today" : "discover"/);
+  assert.match(page, /const hasRequiredReadingData = data\.itemsScope === "discover"/);
+  assert.match(page, /const blockingLoading = loading && !data\.itemsLoaded/);
+  assert.match(page, /\{blockingLoading && <div className="list-loading"/);
+});
+
 test("background reading heartbeats never mark an article read or replace the active article", async () => {
   const [page, store] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
