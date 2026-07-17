@@ -7,7 +7,8 @@ export async function GET(request: Request) {
   const view = new URL(request.url).searchParams.get("view");
   const needsReadingData = view === "discover" || (view === "today" && Boolean(user));
   if (!needsReadingData) {
-    return Response.json({ sources: [], items: [], totalItems: 0, idea: null, imports: [], itemsLoaded: false, user });
+    return Response.json({ sources: [], items: [], totalItems: 0, idea: null, imports: [], itemsLoaded: false, itemsScope: null, user });
   }
-  return Response.json({ ...await dashboard(env, user?.id || null), itemsLoaded: true, user });
+  const itemsScope = view === "today" ? "today" : "discover";
+  return Response.json({ ...await dashboard(env, user?.id || null, itemsScope), itemsLoaded: true, itemsScope, user });
 }
