@@ -13,6 +13,7 @@ export type SessionUser = {
 
 const SESSION_COOKIE = "rss_ai_session";
 const SESSION_SECONDS = 60 * 60 * 24 * 30;
+const SESSION_TOUCH_INTERVAL_MS = 5 * 60 * 1000;
 // Cloudflare Workers Web Crypto supports PBKDF2 iteration counts up to 100,000.
 const PASSWORD_ITERATIONS = 100_000;
 const encoder = new TextEncoder();
@@ -145,10 +146,13 @@ export async function getSessionUser(env: AuthEnv, request: Request) {
   if (!token) return null;
   await ensureSchema(env.DB);
   const tokenHash = await sha256(token);
-  const row = await env.DB.prepare("SELECT u.id, u.account, u.nickname, u.bio, u.avatar_key AS avatarKey, u.role, u.created_at AS createdAt FROM auth_sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND datetime(s.expires_at) > datetime('now')")
+  const row = await env.DB.prepare("SELECT u.id, u.account, u.nickname, u.bio, u.avatar_key AS avatarKey, u.role, u.created_at AS createdAt, s.last_seen_at AS lastSeenAt FROM auth_sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ? AND datetime(s.expires_at) > datetime('now')")
     .bind(tokenHash).first<Record<string, unknown>>();
   if (!row) return null;
-  await env.DB.prepare("UPDATE auth_sessions SET last_seen_at = ? WHERE token_hash = ?").bind(new Date().toISOString(), tokenHash).run();
+  const lastSeenAt = new Date(String(row.lastSeenAt || "")).getTime();
+  if (!Number.isFinite(lastSeenAt) || Date.now() - lastSeenAt >= SESSION_TOUCH_INTERVAL_MS) {
+    await env.DB.prepare("UPDATE auth_sessions SET last_seen_at = ? WHERE token_hash = ?").bind(new Date().toISOString(), tokenHash).run();
+  }
   return publicUser(row);
 }
 
