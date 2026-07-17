@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.personal-intel-desk.wechat-sync</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>/ABSOLUTE/PATH/TO/qingliu-reader/scripts/wechat-subscription-sync.mjs</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/ABSOLUTE/PATH/TO/qingliu-reader</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>RSS_AI_ENDPOINT</key>
+    <string>http://localhost:3000</string>
+    <key>WECHAT_WIZARD</key>
+    <string>/ABSOLUTE/PATH/TO/wechat_wizard.py</string>
+    <key>WECHAT_DOWNLOADER</key>
+    <string>/ABSOLUTE/PATH/TO/wechat_downloader.py</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StartInterval</key>
+  <integer>60</integer>
+  <key>StandardOutPath</key>
+  <string>/tmp/qingliu-reader-wechat-sync.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/qingliu-reader-wechat-sync-error.log</string>
+</dict>
+</plist>

@@ -1,0 +1,1 @@
+ALTER TABLE `sources` ADD `avatar_url` text;

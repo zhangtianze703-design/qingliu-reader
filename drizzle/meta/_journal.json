@@ -1,0 +1,83 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1783937626592,
+      "tag": "0000_sharp_tenebrous",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1783942488733,
+      "tag": "0001_aspiring_naoko",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1783997331677,
+      "tag": "0002_loud_madelyne_pryor",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1784001200000,
+      "tag": "0003_seed_wechat_articles",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1784010723357,
+      "tag": "0004_gray_molten_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1784092879549,
+      "tag": "0005_pretty_justice",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1784099234155,
+      "tag": "0006_yummy_norrin_radd",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1784121203645,
+      "tag": "0007_lyrical_romulus",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1784122498919,
+      "tag": "0008_complete_proemial_gods",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1784176342744,
+      "tag": "0009_chilly_mantis",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1784183511607,
+      "tag": "0010_dry_pride",
+      "breakpoints": true
+    }
+  ]
+}
