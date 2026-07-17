@@ -43,7 +43,7 @@ type Source = { id: number; kind: "rss" | "wechat" | "x"; category: SourceCatego
 type Item = { id: number; sourceId: number | null; kind: "rss" | "link"; title: string; author: string | null; originalExcerpt: string | null; translatedTitle: string | null; translatedExcerpt: string | null; url: string; publishedAt: string | null; topic: string | null; status: "pending" | "ready" | "needs_ai"; isRead: number | boolean; isSaved: number | boolean; sourceName: string | null };
 type Detail = Item & { contentMarkdown: string | null };
 type ImportJob = { id: number; query: string; status: "pending" | "completed" | "failed"; stage: "queued" | "reading" | "importing" | "history" | "retrying" | "completed"; resultName: string | null; itemCount: number; lastError: string | null; createdAt: string; updatedAt: string | null };
-type Dashboard = { sources: Source[]; items: Item[]; totalItems: number; imports: ImportJob[]; idea: { id: number; headline: string; angle: string } | null; itemsLoaded: boolean; user: SessionUser | null };
+type Dashboard = { sources: Source[]; items: Item[]; totalItems: number; imports: ImportJob[]; idea: { id: number; headline: string; angle: string } | null; itemsLoaded: boolean; itemsScope: "today" | "discover" | null; user: SessionUser | null };
 type LeaderboardData = { period: "today" | "yesterday"; day: string; reading: Array<{ id: number; nickname: string; avatarUrl: string | null; readCount: number; readSeconds: number }>; contribution: Array<{ id: number; nickname: string; avatarUrl: string | null; contributionCount: number }> };
 type AnnotationReply = { id: number; annotationId: number; userId: number; nickname: string; avatarUrl: string | null; replyToUserId: number | null; replyToNickname: string | null; body: string; createdAt: string };
 type Annotation = { id: number; itemId: number; userId: number; nickname: string; avatarUrl: string | null; quote: string; body: string; blockIndex: number; startOffset: number; endOffset: number; createdAt: string; updatedAt: string; replyCount: number; replies: AnnotationReply[]; itemTitle?: string; itemAuthor?: string | null; sourceName?: string | null };
@@ -62,7 +62,7 @@ type PublicProfile = {
 type Notification = { id: number; type: "annotation_reply" | "profile_message" | "profile_like"; actorUserId: number; actorNickname: string; actorAvatarUrl: string | null; annotationId: number | null; itemId: number | null; profileMessageId: number | null; isRead: number | boolean; createdAt: string };
 type DeskView = "today" | "discover" | "annotations" | "leaderboard" | "profile";
 
-const blank: Dashboard = { sources: [], items: [], totalItems: 0, imports: [], idea: null, itemsLoaded: false, user: null };
+const blank: Dashboard = { sources: [], items: [], totalItems: 0, imports: [], idea: null, itemsLoaded: false, itemsScope: null, user: null };
 const SOURCE_PANE_PREFERENCE = "rss-ai-source-pane-collapsed";
 const SOURCE_PANE_EVENT = "rss-ai-source-pane-preference";
 const ARTICLE_PANE_WIDTH_PREFERENCE = "rss-ai-article-pane-width";
@@ -833,7 +833,8 @@ export function DeskApp({ initialView = "today" }: { initialView?: DeskView }) {
 
   useEffect(() => {
     const needsReadingData = view === "discover" || (view === "today" && Boolean(data.user));
-    if (!dashboardInitialized || !needsReadingData || data.itemsLoaded) return;
+    const hasRequiredReadingData = data.itemsScope === "discover" || (view === "today" && data.itemsScope === "today");
+    if (!dashboardInitialized || !needsReadingData || hasRequiredReadingData) return;
     let active = true;
     Promise.resolve().then(() => { if (active) setLoading(true); });
     jsonRequest<Dashboard>("/api/dashboard?view=discover", { cache: "no-store" })
@@ -848,7 +849,7 @@ export function DeskApp({ initialView = "today" }: { initialView?: DeskView }) {
       .catch((error) => { if (active) setNotice(error.message); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [dashboardInitialized, data.itemsLoaded, data.user, view]);
+  }, [dashboardInitialized, data.itemsScope, data.user, view]);
 
   useEffect(() => {
     const onPopState = () => {
@@ -1085,6 +1086,7 @@ export function DeskApp({ initialView = "today" }: { initialView?: DeskView }) {
   const activeCategory = selectedCategory === "all" ? null : sourceCategoryLabel(selectedCategory);
   const articlePaneCount = query.trim() ? visibleItems.length : articleStatusCounts[articleStatus];
   const activeImport = data.imports.find((job) => job.id === activeImportId) || data.imports.find((job) => job.status === "pending") || null;
+  const blockingLoading = loading && !data.itemsLoaded;
 
   useEffect(() => {
     if (!detailItemId || (view !== "today" && view !== "discover")) {
@@ -1661,7 +1663,7 @@ export function DeskApp({ initialView = "today" }: { initialView?: DeskView }) {
             </div>
           </div>}
         </div>)}
-        {!loading && filteredSources.length === 0 && <p className="source-empty">{data.sources.length === 0 ? "还没有来源，登录后收录一个经常看的作者或网站。" : `${activeCategory}分类还没有来源。`}</p>}
+        {!blockingLoading && filteredSources.length === 0 && <p className="source-empty">{data.sources.length === 0 ? "还没有来源，登录后收录一个经常看的作者或网站。" : `${activeCategory}分类还没有来源。`}</p>}
       </nav>
       {activeImport && <div className={`import-status ${activeImport.status === "completed" ? "done" : "working"}`} role="status" aria-live="polite">
         <div className="import-status-head"><span>{activeImport.status === "completed" ? <Check size={14} weight="bold" aria-hidden="true" /> : <CircleNotch size={15} weight="bold" aria-hidden="true" />}</span><div><strong>{importStatusCopy(activeImport).title}</strong><small>{importStatusCopy(activeImport).detail}</small></div>{activeImport.status === "completed" && <button aria-label="关闭导入状态" onClick={() => setActiveImportId(null)}><X size={13} aria-hidden="true" /></button>}</div>
@@ -1673,9 +1675,9 @@ export function DeskApp({ initialView = "today" }: { initialView?: DeskView }) {
 
     {view === "today" && <section className="today-view" id="today-content" aria-label="今日阅读">
       <div className="today-scroll">
-        {loading && <div className="today-loading" role="status"><i /><i /><i /><span>正在整理今天的更新</span></div>}
+        {blockingLoading && <div className="today-loading" role="status"><i /><i /><i /><span>正在整理今天的更新</span></div>}
 
-        {!loading && !data.user && <div className="today-state today-auth-state">
+        {!blockingLoading && !data.user && <div className="today-state today-auth-state">
           <span className="today-state-mark"><BookOpenText size={28} weight="duotone" /></span>
           <small>{todayHeading()}</small>
           <h1>登录后，开始你的今日阅读</h1>
@@ -1683,7 +1685,7 @@ export function DeskApp({ initialView = "today" }: { initialView?: DeskView }) {
           <div className="today-state-actions"><button className="today-primary" onClick={() => openAuth("login")}>登录并开始</button><button onClick={() => navigate("discover")}>先看看有哪些来源</button></div>
         </div>}
 
-        {!loading && data.user && followedSourceIds.size === 0 && <div className="today-state today-onboarding-state">
+        {!blockingLoading && data.user && followedSourceIds.size === 0 && <div className="today-state today-onboarding-state">
           <span className="today-state-mark"><Plus size={26} weight="duotone" /></span>
           <small>第一次来到这里</small>
           <h1>先关注几位你想长期阅读的作者</h1>
@@ -1691,7 +1693,7 @@ export function DeskApp({ initialView = "today" }: { initialView?: DeskView }) {
           <button className="today-primary" onClick={() => navigate("discover")}>去发现来源</button>
         </div>}
 
-        {!loading && data.user && followedSourceIds.size > 0 && todayItems.length === 0 && <div className="today-state today-empty-state">
+        {!blockingLoading && data.user && followedSourceIds.size > 0 && todayItems.length === 0 && <div className="today-state today-empty-state">
           <div className="today-avatar-stack quiet" aria-hidden="true">{data.sources.filter((source) => Boolean(source.isFollowed)).slice(0, 6).map((source) => <span key={source.id}><SourceAvatar source={source} /></span>)}</div>
           <small>{todayHeading()}</small>
           <h1>今天还没有新的更新</h1>
@@ -1699,7 +1701,7 @@ export function DeskApp({ initialView = "today" }: { initialView?: DeskView }) {
           <button onClick={() => navigate("discover")}>浏览来源库</button>
         </div>}
 
-        {!loading && data.user && todayItems.length > 0 && todayUnreadCount === 0 && !todaySessionStarted && <div className="today-state today-complete-state">
+        {!blockingLoading && data.user && todayItems.length > 0 && todayUnreadCount === 0 && !todaySessionStarted && <div className="today-state today-complete-state">
           <div className="today-avatar-stack complete" aria-label={`今天有 ${todaySources.length} 位作者更新`}>{todaySources.slice(0, 8).map((source) => <span title={source.name} key={source.id}><SourceAvatar source={source} /></span>)}</div>
           <small>{todayHeading()}</small>
           <h1>今天的更新已经读完</h1>
@@ -1707,7 +1709,7 @@ export function DeskApp({ initialView = "today" }: { initialView?: DeskView }) {
           <button onClick={() => navigate("discover")}>去发现更多作者</button>
         </div>}
 
-        {!loading && data.user && todayUnreadCount > 0 && !todaySessionStarted && <div className="today-opening">
+        {!blockingLoading && data.user && todayUnreadCount > 0 && !todaySessionStarted && <div className="today-opening">
           <div className="today-opening-copy">
             <small>{todayHeading()}</small>
             <h1>今天，他们为你更新了</h1>
@@ -1726,7 +1728,7 @@ export function DeskApp({ initialView = "today" }: { initialView?: DeskView }) {
           <button className="today-start" onClick={startTodayReading}><span>{todayReadCount > 0 ? "继续今日阅读" : "开始今日阅读"}</span><CaretRight size={18} weight="bold" /></button>
         </div>}
 
-        {!loading && data.user && todaySessionStarted && selectedItem && <div className="today-reading-stage">
+        {!blockingLoading && data.user && todaySessionStarted && selectedItem && <div className="today-reading-stage">
           <div className="today-reading-toolbar">
             <button className="today-back" onClick={() => setTodaySessionStarted(false)}><CaretLeft size={15} weight="bold" />今日概览</button>
             <div className="today-progress"><span>{todayReadCount + (selectedItem.isRead ? 0 : 1)} / {todayItems.length}</span><div><i style={{ width: `${Math.min(100, Math.round((todayReadCount + (selectedItem.isRead ? 0 : 1)) / todayItems.length * 100))}%` }} /></div></div>
@@ -1740,7 +1742,7 @@ export function DeskApp({ initialView = "today" }: { initialView?: DeskView }) {
             </article>{showAnnotationSidebar && <AnnotationSidebar annotations={itemAnnotations} loading={annotationsLoading} draft={sidebarDraft} user={data.user} activeAnnotationId={activeAnnotationId} busy={busy} onCollapse={() => setAnnotationPanelOpen(false)} onCancelDraft={cancelAnnotationDraft} onCreate={createCurrentAnnotation} onFocus={focusAnnotation} onReply={replyToAnnotation} onRequireLogin={() => openAuth("login")} onOpenProfile={openProfile} />}</div>}
         </div>}
 
-        {!loading && data.user && todaySessionStarted && !selectedItem && todayItems.length > 0 && <div className="today-state today-complete-state reading-complete">
+        {!blockingLoading && data.user && todaySessionStarted && !selectedItem && todayItems.length > 0 && <div className="today-state today-complete-state reading-complete">
           <span className="today-state-mark"><Check size={28} weight="bold" /></span>
           <small>{todayHeading()}</small>
           <h1>今天的更新已经读完</h1>
@@ -1764,8 +1766,8 @@ export function DeskApp({ initialView = "today" }: { initialView?: DeskView }) {
             setVisibleItemLimit((limit) => Math.min(visibleItems.length, limit + ARTICLE_BATCH_SIZE));
           }
         }}>
-          {loading && <div className="list-loading"><i /><i /><i /></div>}
-          {!loading && visibleItems.length === 0 && <div className="list-empty"><strong>{query.trim() ? "没有找到匹配文章" : articleStatus === "unread" ? "未读已经清空" : "还没有已读文章"}</strong><p>{query.trim() ? "换个关键词试试。" : !data.user ? "登录后会保存你的已读状态。" : articleStatus === "unread" ? "新文章同步后会出现在这里。" : "在文章中点击「标记已读」后，文章会出现在这里。"}</p></div>}
+          {blockingLoading && <div className="list-loading"><i /><i /><i /></div>}
+          {!blockingLoading && visibleItems.length === 0 && <div className="list-empty"><strong>{query.trim() ? "没有找到匹配文章" : articleStatus === "unread" ? "未读已经清空" : "还没有已读文章"}</strong><p>{query.trim() ? "换个关键词试试。" : !data.user ? "登录后会保存你的已读状态。" : articleStatus === "unread" ? "新文章同步后会出现在这里。" : "在文章中点击「标记已读」后，文章会出现在这里。"}</p></div>}
           {renderedItems.map((item) => <button className={`article-row ${effectiveItemId === item.id ? "active" : ""} ${item.isRead ? "read" : ""}`} key={item.id} onClick={() => openItem(item.id)}>
             <div className="article-row-meta"><span>{item.author || item.sourceName || "未知作者"}</span><span className="article-meta-trailing"><time>{when(item.publishedAt)}</time>{Boolean(item.isRead) && <span className="read-status"><Check size={11} weight="bold" aria-hidden="true" />已读</span>}{Boolean(item.isSaved) && <span className="saved-status" aria-label="已收藏" title="已收藏"><BookmarkSimple size={12} weight="fill" aria-hidden="true" /></span>}</span></div><h2>{item.translatedTitle || item.title}</h2><p>{item.translatedExcerpt || item.originalExcerpt || "等待读取正文"}</p>
           </button>)}
